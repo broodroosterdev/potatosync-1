@@ -31,5 +31,4 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
           push: true
-          tags: |
-              basmakes/potatosync-login:latest
+          tags: basmakes/potatosync-login:latest
