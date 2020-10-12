@@ -14,7 +14,8 @@ router.use('/user', user.routes()).use(user.allowedMethods());
 router.swagger({
   title: 'PotatoSync',
   description: 'PotatoSync REST API',
-  version: '2.0.0'
+  version: '2.0.0',
+  prefix: '/api/v2/login'
 });
 
 // mapDir will scan the input dir, and automatically call router.map to all Router Class
