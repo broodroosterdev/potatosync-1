@@ -1,9 +1,10 @@
 import { Entity, Column, PrimaryGeneratedColumn, OneToOne } from 'typeorm';
-import { Length, IsEmail, IsOptional, ValidateIf } from 'class-validator';
+import { Length, IsEmail, IsOptional, ValidateIf, MinLength, MaxLength, Max } from 'class-validator';
 import { hash, compare } from 'bcrypt';
 import { IsUniq } from '@join-com/typeorm-class-validator-is-uniq';
 import { EmailVerifyToken } from './emailVerifyToken';
 import { PasswordResetToken } from './passwordResetToken';
+import { ValidationStatusCode } from '../statuscodes';
 
 @Entity()
 export class User {
@@ -11,23 +12,30 @@ export class User {
     id: string;
 
     @Column({ length: 80, unique: true })
-    @Length(3, 80, { groups: ['register', 'login', 'send-reset'] })
-    @IsUniq({ groups: ['register'] })
-    @ValidateIf(o => o.email == undefined, { groups: ['login', 'send-reset'] })
+    @MinLength(3, { message: ValidationStatusCode.TOO_SHORT.toString(), groups: ['register', 'login', 'send-reset'] })
+    @MaxLength(80, { message: ValidationStatusCode.TOO_LONG.toString(), groups: ['register', 'login', 'send-reset'] })
+    @IsUniq({ message: ValidationStatusCode.ALREADY_EXISTS.toString(), groups: ['register'] })
+    @ValidateIf(o => o.email == undefined, { message: ValidationStatusCode.MISSING.toString(), groups: ['login', 'send-reset'] })
     username: string;
 
     @Column({ length: 100 })
-    @Length(5, 60, { groups: ['register', 'login'] })
+    @MinLength(5, {
+        message: ValidationStatusCode.TOO_SHORT.toString(), groups: ['register', 'login']
+    })
+    @MaxLength(60, {
+        message: ValidationStatusCode.TOO_LONG.toString(), groups: ['register', 'login']
+    })
     password: string;
 
     @Column({ length: 100 })
     password_identifier: string;
 
     @Column({ length: 100, unique: true })
-    @Length(10, 100, { groups: ['register', 'login', 'resend', 'send-reset'] })
-    @IsEmail(undefined, { groups: ['register', 'login', 'resend', 'send-reset'] })
-    @IsUniq({ groups: ['register'] })
-    @IsOptional({ groups: ['login', 'send-reset'] })
+    @MinLength(10, { message: ValidationStatusCode.TOO_SHORT.toString(), groups: ['register', 'login', 'resend', 'send-reset'] })
+    @MaxLength(100, { message: ValidationStatusCode.TOO_LONG.toString(), groups: ['register', 'login', 'resend', 'send-reset'] })
+    @IsEmail(undefined, { message: ValidationStatusCode.INVALID_FORMAT.toString(), groups: ['register', 'login', 'resend', 'send-reset'] })
+    @IsUniq({ message: ValidationStatusCode.ALREADY_EXISTS.toString(), groups: ['register'] })
+    @IsOptional({ message: ValidationStatusCode.MISSING.toString(), groups: ['login', 'send-reset'] })
     email: string;
 
     @Column({ length: 100, nullable: true })

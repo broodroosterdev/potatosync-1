@@ -1,7 +1,7 @@
 import { BaseContext } from 'koa';
 import { getManager, Repository } from 'typeorm';
 import { validate, ValidationError } from 'class-validator';
-import { body, request, responsesAll, summary, tagsAll, path } from 'koa-swagger-decorator';
+import { body, request, responsesAll, summary, tagsAll, path, responses } from 'koa-swagger-decorator';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import pug from 'pug';
@@ -14,7 +14,13 @@ import { PasswordResetToken } from '../entity/passwordResetToken';
 import { formData } from 'koa-swagger-decorator/dist';
 import moment from 'moment';
 import { SessionToken } from '../entity/sessionToken';
+import { LoginStatusCode, VerifyStatusCode } from '../statuscodes';
 
+function getErrors(errors, field){
+  var error = errors.find(e => e.property == field)?.constraints ?? ["0"];
+  var firstError = Object.values(error)[0].toString();
+  return Number.parseInt(firstError);
+}
 
 @tagsAll(['User'])
 @responsesAll({ 200: { description: 'success'}, 400: { description: 'bad request'}})
@@ -44,8 +50,13 @@ export default class UserController {
 
     if (errors.length > 0) {
       // return BAD REQUEST status code and errors array
+      var validation = {
+        "username": getErrors(errors, "username"),
+        "email": getErrors(errors, "email"),
+        "password": getErrors(errors, "password"),
+      }
       ctx.status = 400;
-      ctx.body = errors;
+      ctx.body = validation;
     } else {
       // hash password
       await userToBeSaved.hashPassword();
@@ -66,7 +77,7 @@ export default class UserController {
           }
         });
       } catch (err) {
-        ctx.throw(500, 'Could not send email');
+        ctx.throw(500, 'InternalServerError');
       }
       // save user and token
       const user = await userRepository.save(userToBeSaved);
@@ -83,6 +94,11 @@ export default class UserController {
 
   @request('post', '/user/login')
   @summary(`Register a user`)
+  @responses({
+    200: { description: 'Login Success' },
+    400: { description: 'Validation Failed'},
+    401: { description: 'User is not verified' } 
+  })
   @body(loginSchema)
   public static async loginUser(ctx: BaseContext) {
     // get a user repository to perform operations with user
@@ -111,19 +127,24 @@ export default class UserController {
     if (errors.length > 0) {
       // return BAD REQUEST status code and errors array
       ctx.status = 400;
-      ctx.body = errors;
+      var validation = {
+        "username": getErrors(errors, "username"),
+        "email": getErrors(errors, "email"),
+        "password": getErrors(errors, "password"),
+      }
+      ctx.body = validation;
     } else if (!user) {
       // return BAD REQUEST status code and email/password does not exist error
       ctx.status = 400;
-      ctx.body = 'The specified email/password is invalid';
+      ctx.body = LoginStatusCode[LoginStatusCode.INVALID_CREDENTIALS];
     } else if (!await user.compareHash(userToBeLoggedIn.password)) {
       // return BAD REQUEST status code and password is wrong error
       ctx.status = 400;
-      ctx.body = 'The specified password is invalid';
+      ctx.body = LoginStatusCode[LoginStatusCode.INVALID_CREDENTIALS];
     } else if (!user.verified) {
       // return UNAUTHORIZED status code and account is not verified error
       ctx.status = 401;
-      ctx.body = 'The specified account is not verified';
+      ctx.body = LoginStatusCode[LoginStatusCode.USER_NOT_VERIFIED];
     } else {
       // build up session token entity
       const tokenToBeSaved: EmailVerifyToken = new EmailVerifyToken();
@@ -149,6 +170,10 @@ export default class UserController {
 
   @request('get', '/user/profile')
   @summary(`Get a user profile`)
+  @responses({
+    200: { description: 'Success' },
+    400: { description: 'User not found' }
+  })
   public static async getProfile(ctx: BaseContext) {
 
     // get a user repository to perform operations with user
@@ -160,7 +185,7 @@ export default class UserController {
     if (!user) {
       // return BAD REQUEST status code and user does not exist error
       ctx.status = 400;
-      ctx.body = 'The specified user was not found';
+      ctx.body = LoginStatusCode[LoginStatusCode.USER_NOT_FOUND];
     } else {
       // dont return password
       delete user.password;
@@ -185,11 +210,11 @@ export default class UserController {
     if (!user) {
       // return BAD REQUEST status code and user does not exist error
       ctx.status = 400;
-      ctx.body = 'The specified user was not found';
+      ctx.body = LoginStatusCode[LoginStatusCode.USER_NOT_FOUND];
     } else if (ctx.state.user.pwId != user.password_identifier) {
       // return UNAUTHORIZED status code and invalid token error
       ctx.status = 401;
-      ctx.body = 'Invalid token';
+      ctx.body = LoginStatusCode[LoginStatusCode.INVALID_TOKEN];
     }
 
     // try to find user
@@ -198,11 +223,11 @@ export default class UserController {
     if (!token || user.id != token.user.id) {
       // return BAD REQUEST status code and invalid session error
       ctx.status = 400;
-      ctx.body = 'Invalid session';
+      ctx.body = LoginStatusCode[LoginStatusCode.INVALID_SESSION];
     } else if (!user.verified) {
       // return UNAUTHORIZED status code and account is not verified error
       ctx.status = 401;
-      ctx.body = 'The specified account is not verified';
+      ctx.body = LoginStatusCode[LoginStatusCode.USER_NOT_VERIFIED];
     } else {
       // create jwt
       const token = jwt.sign(
@@ -230,11 +255,11 @@ export default class UserController {
     if (!user) {
       // return BAD REQUEST status code and user does not exist error
       ctx.status = 400;
-      ctx.body = 'The specified user was not found';
+      ctx.body = LoginStatusCode[LoginStatusCode.USER_NOT_FOUND];
     } else if (ctx.state.user.pwId != user.password_identifier) {
       // return UNAUTHORIZED status code and invalid token error
       ctx.status = 401;
-      ctx.body = 'Invalid token';
+      ctx.body = LoginStatusCode[LoginStatusCode.INVALID_TOKEN];
     }
 
     // try to find token
@@ -251,13 +276,13 @@ export default class UserController {
     if (!token || user.id != token.user.id) {
       // return BAD REQUEST status code and invalid session error
       ctx.status = 400;
-      ctx.body = 'Invalid session';
+      ctx.body = LoginStatusCode[LoginStatusCode.INVALID_SESSION];
     } else {
       // delete session
       sessionRepository.remove(token);
       // return OK status code and jwt token
       ctx.status = 200;
-      ctx.body = 'Logged out';
+      ctx.body = LoginStatusCode[LoginStatusCode.LOGGED_OUT];
     }
   }
 
@@ -277,7 +302,7 @@ export default class UserController {
     if (!token) {
       // return BAD REQUEST status code and user does not exist error
       ctx.status = 400;
-      ctx.body = 'The specified token was not found';
+      ctx.body = VerifyStatusCode[VerifyStatusCode.TOKEN_NOT_FOUND];
     } else {
       // set verified status to true
       token.user.verified = true;
@@ -286,7 +311,7 @@ export default class UserController {
       await tokenRepository.remove(token);
       // return OK status code and jwt token
       ctx.status = 200;
-      ctx.body = 'Account verified';
+      ctx.body = VerifyStatusCode[VerifyStatusCode.ACCOUNT_VERIFIED];
     }
   }
 
@@ -317,11 +342,11 @@ export default class UserController {
     } else if (!user) {
       // return BAD REQUEST status code and email does not exist error
       ctx.status = 400;
-      ctx.body = 'The specified email was not found';
+      ctx.body = LoginStatusCode[LoginStatusCode.USER_NOT_FOUND];
     } else if (user.verified) {
       // return BAD REQUEST status code and user already verified error
       ctx.status = 400;
-      ctx.body = 'The specified user is already verified';
+      ctx.body = VerifyStatusCode[VerifyStatusCode.ACCOUNT_ALREADY_VERIFIED];
     } else {
       if (!user.verify_token) {
         // generate verification token
@@ -342,13 +367,13 @@ export default class UserController {
             }
           });
         } catch (err) {
-          ctx.throw(500, 'Could not send email');
+          ctx.throw(500, VerifyStatusCode[VerifyStatusCode.INTERNAL_SERVER_ERROR]);
         }
         // save verification token
         await tokenRepository.save(tokenToBeSaved);
         // return OK status code
         ctx.status = 200;
-        ctx.body = 'Email has been sent';
+        ctx.body = VerifyStatusCode[VerifyStatusCode.EMAIL_SENT];
       } else {
         // send verification mail
         try {
@@ -364,11 +389,11 @@ export default class UserController {
             }
           });
         } catch (err) {
-          ctx.throw(500, 'Could not send email');
+          ctx.throw(500, VerifyStatusCode[VerifyStatusCode.INTERNAL_SERVER_ERROR]);
         }
         // return OK status code
         ctx.status = 200;
-        ctx.body = 'Email has been sent';
+        ctx.body = VerifyStatusCode[VerifyStatusCode.EMAIL_SENT];
       }
     }
   }
@@ -400,16 +425,21 @@ export default class UserController {
 
     if (errors.length > 0) {
       // return BAD REQUEST status code and errors array
+      var validation = {
+        'username': getErrors(errors, 'username'),
+        'email': getErrors(errors, 'email'),
+        'password': getErrors(errors, 'password')
+      };
       ctx.status = 400;
-      ctx.body = errors;
+      ctx.body = validation;
     } else if (!user) {
       // return BAD REQUEST status code and email does not exist error
       ctx.status = 400;
-      ctx.body = 'The specified user was not found';
+      ctx.body = LoginStatusCode[LoginStatusCode.USER_NOT_FOUND];
     } else if (!user.verified) {
       // return BAD REQUEST status code and user already verified error
       ctx.status = 400;
-      ctx.body = 'The specified user is not verified';
+      ctx.body = LoginStatusCode[LoginStatusCode.USER_NOT_VERIFIED];
     } else {
       if (!user.reset_token) {
         // generate verification token
@@ -432,13 +462,13 @@ export default class UserController {
           });
         } catch (err) {
           console.log(err);
-          ctx.throw(500, 'Could not send email');
+          ctx.throw(500, VerifyStatusCode[VerifyStatusCode.INTERNAL_SERVER_ERROR]);
         }
         // save verification token
         await tokenRepository.save(tokenToBeSaved);
         // return OK status code
         ctx.status = 200;
-        ctx.body = 'Email has been sent';
+        ctx.body = VerifyStatusCode[VerifyStatusCode.EMAIL_SENT];
       } else {
         // send verification mail
         try {
@@ -455,11 +485,11 @@ export default class UserController {
           });
         } catch (err) {
           console.log(err);
-          ctx.throw(500, 'Could not send email');
+          ctx.throw(500, VerifyStatusCode[VerifyStatusCode.INTERNAL_SERVER_ERROR]);
         }
         // return OK status code
         ctx.status = 200;
-        ctx.body = 'Email has been sent';
+        ctx.body = VerifyStatusCode[VerifyStatusCode.EMAIL_SENT];
       }
     }
   }
@@ -495,11 +525,11 @@ export default class UserController {
     if (!token) {
       // return BAD REQUEST status code and user does not exist error
       ctx.status = 400;
-      ctx.body = 'The token has expired';
+      ctx.body = VerifyStatusCode[VerifyStatusCode.TOKEN_NOT_FOUND];
     } else if (moment(token.createdAt).add(10, 'minutes').unix() > moment.now()) {
       await tokenRepository.remove(token);
       ctx.status = 400;
-      ctx.body = 'The token has expired';
+      ctx.body = VerifyStatusCode[VerifyStatusCode.TOKEN_EXPIRED];
     } else if (ctx.request.body.password !== ctx.request.body.password_again) {
       ctx.status = 400;
       ctx.body = compiledPasswordPage({
