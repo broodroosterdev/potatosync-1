@@ -1,0 +1,195 @@
+openapi: 3.0.0
+info:
+  title: PotatoAuth
+  version: '1.0'
+  description: This API handles the authentication of the users and provides them with JWT tokens to authorize with the other API's
+servers:
+  - url: 'http://localhost:3000'
+paths:
+  /health:
+    get:
+      summary: Your GET endpoint
+      tags: []
+      responses:
+        '200':
+          description: 200 OK
+      operationId: health
+      description: Simple health endpoint to check if the service is online
+    parameters: []
+  /login:
+    post:
+      summary: ''
+      operationId: post-login
+      description: Logs users in and returns JWT tokens that can be used for other API's
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: Username is only required when there is no email given
+                email:
+                  type: string
+                  description: Email is only required when there is no username given
+                password:
+                  type: string
+              required:
+                - password
+            examples:
+              Example with username:
+                value:
+                  username: Potato
+                  password: s3cur3passw0rd
+              Example with email:
+                value:
+                  email: potato@gmail.com
+                  password: s3cur3passw0rd
+        description: The request body must contain a json object with email or username and a password
+      responses:
+        '200':
+          description: OK (returns JWT tokens)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: The access token
+                  refresh_token:
+                    type: string
+                    description: The refresh token
+              examples:
+                Example JWT tokens:
+                  value:
+                    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+                    refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          description: Unauthorized
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                Invalid Credentials (Username/Email or password is not correct):
+                  value: INVALID_CREDENTIALS
+                User Not Verified (User has not verified their email yet:
+                  value: USER_NOT_VERIFIED
+  /register:
+    post:
+      summary: ''
+      operationId: post-register
+      responses:
+        '201':
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              examples:
+                Register response:
+                  value:
+                    id: some-uuid-here
+                    username: Potato
+                    email: potato@gmail.com
+                    image_url: ''
+                    verified: false
+                    role: user
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '500':
+          description: Internal Server Error (usually caused by not being able to send an email
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                Default response:
+                  value: InternalServerError
+      description: Registers new users with the information provided and sends them a verification email
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 80
+                email:
+                  type: string
+                  format: email
+                  maxLength: 100
+                  minLength: 10
+                password:
+                  type: string
+                  format: password
+                  minLength: 5
+                  maxLength: 60
+              required:
+                - username
+                - email
+                - password
+            examples:
+              Example body:
+                value:
+                  username: Potato
+                  email: potato@gmail.com
+                  password: s3cur3passw0rd
+        description: ''
+components:
+  schemas:
+    User:
+      title: User
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        image_url:
+          type: string
+        verified:
+          type: boolean
+        role:
+          type: string
+  securitySchemes:
+    Access Token:
+      type: http
+      scheme: bearer
+    Refresh Token:
+      type: http
+      scheme: bearer
+  parameters: {}
+  responses:
+    ValidationFailed:
+      description: Response returned when the validation of a user failed
+      content:
+        application/json:
+          schema:
+            description: ''
+            type: object
+            properties:
+              username:
+                type: number
+              email:
+                type: number
+              password:
+                type: number
+            required:
+              - username
+              - email
+              - password
+          examples:
+            Example of failed validation:
+              value:
+                username: 1
+                email: 3
+                password: 2

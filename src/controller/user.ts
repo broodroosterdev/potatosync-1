@@ -135,11 +135,11 @@ export default class UserController {
       ctx.body = validation;
     } else if (!user) {
       // return BAD REQUEST status code and email/password does not exist error
-      ctx.status = 400;
+      ctx.status = 401;
       ctx.body = LoginStatusCode[LoginStatusCode.INVALID_CREDENTIALS];
     } else if (!await user.compareHash(userToBeLoggedIn.password)) {
       // return BAD REQUEST status code and password is wrong error
-      ctx.status = 400;
+      ctx.status = 401;
       ctx.body = LoginStatusCode[LoginStatusCode.INVALID_CREDENTIALS];
     } else if (!user.verified) {
       // return UNAUTHORIZED status code and account is not verified error
